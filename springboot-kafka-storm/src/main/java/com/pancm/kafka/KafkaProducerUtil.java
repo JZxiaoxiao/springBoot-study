@@ -3,30 +3,34 @@ package com.pancm.kafka;
 import java.util.List;
 import java.util.Properties;
 
+import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.serialization.StringSerializer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
- * 
-* @Title: KafkaProducerUtil
-* @Description:
-* kafka消息生产者 
-* @Version:1.0.0  
-* @author pancm
-* @date 2018年4月2日
+ *
+ * @Title: KafkaProducerUtil
+ * @Description:
+ * kafka消息生产者
+ * @Version:1.0.0
+ * @author pancm
+ * @date 2018年4月2日
  */
 public  final class KafkaProducerUtil {
-	
 
+	private static final Logger logger = LoggerFactory.getLogger(KafkaProducerUtil.class);
 	/**
 	 * 向kafka发送单条消息
 	 * @param msg 发送的消息
 	 * @param url 发送的地址
 	 * @param topicName 消息名称
 	 * @return
-	 * @throws Exception 
+	 * @throws Exception
 	 */
 	public static boolean sendMessage(String msg,String url,String topicName) {
 		KafkaProducer<String, String> producer=null;
@@ -43,7 +47,7 @@ public  final class KafkaProducerUtil {
 		}
 		return falg;
 	}
-	
+
 
 	/**
 	 * 向kafka发送批量消息
@@ -51,7 +55,7 @@ public  final class KafkaProducerUtil {
 	 * @param url 发送的地址
 	 * @param topicName 消息名称
 	 * @return
-	 * @throws Exception 
+	 * @throws Exception
 	 */
 	public static boolean sendMessage(List<String> listMsg,String url,String topicName) {
 		KafkaProducer<String, String> producer=null;
@@ -61,6 +65,32 @@ public  final class KafkaProducerUtil {
 			producer= new KafkaProducer<String, String>(props);
 			for(String msg:listMsg){
 				producer.send(new ProducerRecord<String, String>(topicName,msg));
+			}
+			falg=true;
+		}catch(Exception e){
+			e.printStackTrace();
+		}finally{
+			producer.close();
+		}
+		return falg;
+	}
+
+	/**
+	 * 向kafka发送批量消息(回调监控发送是否成功)
+	 * @param listMsg 发送的消息
+	 * @param url 发送的地址
+	 * @param topicName 消息名称
+	 * @return
+	 * @throws Exception
+	 */
+	public boolean sendMessageWithCallBack(List<String> listMsg,String url,String topicName) {
+		KafkaProducer<String, String> producer=null;
+		boolean falg=false;
+		try{
+			Properties props=init(url);
+			producer= new KafkaProducer<String, String>(props);
+			for(String msg:listMsg){
+				producer.send(new ProducerRecord<String, String>(topicName,msg),new SendCallBack());
 			}
 			falg=true;
 		}catch(Exception e){
@@ -87,9 +117,25 @@ public  final class KafkaProducerUtil {
 		props.put("retries", 0);
 		//当多条消息需要发送到同一个分区时，生产者会尝试合并网络请求。这会提高client和生产者的效率
 		props.put("batch.size", 16384);
+		//发送时间间隔，默认0ms
+		//props.put("linger.ms", 1);
+		//一次性批量发送大小，默认是16384Bytes
+		//props.put("buffer.memory", 33554432);
 		props.put("key.serializer", StringSerializer.class.getName());
 		props.put("value.serializer", StringSerializer.class.getName());
 		return props;
 	}
-	
+
+	private class SendCallBack implements Callback{
+
+		@Override
+		public void onCompletion(RecordMetadata recordMetadata, Exception e) {
+			if(null != recordMetadata){
+				logger.info("offset={},partition={},topic={},timestamp={}",
+						recordMetadata.offset(),recordMetadata.partition(),recordMetadata.topic(),recordMetadata.timestamp());
+			}else {
+				logger.error("发送消息异常！");
+			}
+		}
+	}
 }
